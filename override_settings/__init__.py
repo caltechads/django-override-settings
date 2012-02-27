@@ -34,12 +34,10 @@ class override_settings(object):
             # get a useful name.
             def _pre_setup(innerself):
                 self.enable()
-
                 test_func._pre_setup(innerself)
             def _post_teardown(innerself):
                 test_func._post_teardown(innerself)
                 self.disable()
-
             inner = type(
                 test_func.__name__,
                 (test_func,),
@@ -73,15 +71,22 @@ class override_settings(object):
                 setattr(override, key, new_value)
         settings._wrapped = override
 
-        if frozenset(getattr(override, 'INSTALLED_APPS')) != frozenset(getattr(self.wrapped, 'INSTALLED_APPS')):
-            from utils import recall_syncdb
-            from utils import clear_all_meta_caches
-            # call ``syncdb`` command
-            recall_syncdb()
-            # clear all models meta cache if possible
-            if 'django.contrib.contenttypes' in getattr(override, 'INSTALLED_APPS'):
-                clear_all_meta_caches()
-            self._resyncdb = True
+        original_apps = frozenset(getattr(self.wrapped, 'INSTALLED_APPS'))
+        override_apps = frozenset(getattr(override, 'INSTALLED_APPS'))
+        if original_apps != override_apps:
+            # is new app in override_apps?
+            def new_app_exists():
+                for app in override_apps:
+                    if app not in original_apps:
+                        return True
+                return False
+            if new_app_exists():
+                # call ``syncdb`` command
+                recall_syncdb()
+                # clear all models meta cache if possible
+                if 'django.contrib.contenttypes' in getattr(override, 'INSTALLED_APPS'):
+                    clear_all_meta_caches()
+                self._resyncdb = True
 
     def disable(self):
         settings._wrapped = self.wrapped
@@ -105,3 +110,31 @@ def without_apps(*apps):
     """
     apps_list = [a for a in settings.INSTALLED_APPS if a not in apps]
     return override_settings(INSTALLED_APPS=apps_list)
+
+def recall_syncdb():
+    """call ``syncdb`` command to create tables of new app's models"""
+    from django.db.models import loading
+    from django.core.management import call_command
+    loading.cache.loaded = False
+    call_command('syncdb', interactive=False, verbosity=0, migrate=False)
+
+def clear_meta_caches(model):
+    """clear model meta caches. it is required to refresh m2m relation"""
+    CACHE_NAMES = (
+            '_m2m_cache', '_field_cache', '_name_map',
+            '_related_objects_cache', '_related_many_to_many_cache'
+        )
+    for name in CACHE_NAMES:
+        if hasattr(model._meta, name):
+            delattr(model._meta, name)
+
+def clear_all_meta_caches():
+    """clear all models meta caches by contenttype
+    
+    .. Note::
+        'django.contrib.contenttypes' is required to installed
+
+    """
+    from django.contrib.contenttypes.models import ContentType
+    for ct in ContentType.objects.iterator():
+        clear_meta_caches(ct.model_class())

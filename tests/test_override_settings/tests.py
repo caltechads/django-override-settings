@@ -3,6 +3,47 @@ from django.test import TestCase
 from override_settings import (
     override_settings, SETTING_DELETED, with_apps, without_apps)
 
+class TestOverrideSettingsDynamicModel(TestCase):
+    """
+    Test the tables of models of apps which added by ``override_settings``
+    is correctly created.
+
+    """
+    def test_database_error(self):
+        """
+        without ``override_settings`` should raise DatabaseError
+        """
+        from django.db import DatabaseError
+        from test_app.models import Article
+        self.assertRaises(DatabaseError, Article.objects.create, **{
+            'title': 'hello', 'body': 'hello'})
+
+    @with_apps('test_override_settings.test_app')
+    def test_with_apps_with_app_which_have_models(self):
+        """
+        without ``override_settings`` should raise DatabaseError
+        """
+        from test_app.models import Article
+        new_article = Article.objects.create(**{'title': 'hello', 'body': 'hello'})
+        self.assertEqual(new_article.title, 'hello')
+        self.assertEqual(new_article.body, 'hello')
+        self.assertEqual(Article.objects.count(), 1)
+
+
+    @with_apps(
+            'django.contrib.contenttypes',      # it is required to enable clearing cache
+            'test_override_settings.test_app',
+        )
+    def test_with_apps_with_app_which_have_models_with_cache_clear(self):
+        """
+        without ``override_settings`` should raise DatabaseError
+        """
+        from test_app.models import Article
+        new_article = Article.objects.create(**{'title': 'hello', 'body': 'hello'})
+        self.assertEqual(new_article.title, 'hello')
+        self.assertEqual(new_article.body, 'hello')
+        self.assertEqual(Article.objects.count(), 1)
+
 @override_settings(FOO="abc")
 class TestOverrideSettingsDecoratedClass(TestCase):
     """

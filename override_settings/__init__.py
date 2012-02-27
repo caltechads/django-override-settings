@@ -18,6 +18,7 @@ class override_settings(object):
     def __init__(self, **kwargs):
         self.options = kwargs
         self.wrapped = settings._wrapped
+        self._resyncdb = False
 
     def __enter__(self):
         self.enable()
@@ -33,10 +34,12 @@ class override_settings(object):
             # get a useful name.
             def _pre_setup(innerself):
                 self.enable()
+
                 test_func._pre_setup(innerself)
             def _post_teardown(innerself):
                 test_func._post_teardown(innerself)
                 self.disable()
+
             inner = type(
                 test_func.__name__,
                 (test_func,),
@@ -70,8 +73,21 @@ class override_settings(object):
                 setattr(override, key, new_value)
         settings._wrapped = override
 
+        if frozenset(getattr(override, 'INSTALLED_APPS')) != frozenset(getattr(self.wrapped, 'INSTALLED_APPS')):
+            from utils import recall_syncdb
+            from utils import clear_all_meta_caches
+            # call ``syncdb`` command
+            recall_syncdb()
+            # clear all models meta cache if possible
+            if 'django.contrib.contenttypes' in getattr(override, 'INSTALLED_APPS'):
+                clear_all_meta_caches()
+            self._resyncdb = True
+
     def disable(self):
         settings._wrapped = self.wrapped
+        if self._resyncdb:
+            from django.db.models import loading
+            loading.cache.loaded = False
 
 def with_apps(*apps):
     """

@@ -73,20 +73,13 @@ class override_settings(object):
 
         original_apps = frozenset(getattr(self.wrapped, 'INSTALLED_APPS'))
         override_apps = frozenset(getattr(override, 'INSTALLED_APPS'))
-        if original_apps != override_apps:
-            # is new app in override_apps?
-            def new_app_exists():
-                for app in override_apps:
-                    if app not in original_apps:
-                        return True
-                return False
-            if new_app_exists():
-                # call ``syncdb`` command
-                recall_syncdb()
-                # clear all models meta cache if possible
-                if 'django.contrib.contenttypes' in getattr(override, 'INSTALLED_APPS'):
-                    clear_all_meta_caches()
-                self._resyncdb = True
+        if original_apps < override_apps:
+            # call ``syncdb`` command
+            recall_syncdb()
+            # clear all models meta cache if possible
+            if 'django.contrib.contenttypes' in getattr(override, 'INSTALLED_APPS'):
+                clear_all_meta_caches()
+            self._resyncdb = True
 
     def disable(self):
         settings._wrapped = self.wrapped
